@@ -1,0 +1,9 @@
+FROM rust:1.96.1-slim AS builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release --bin mock-upstream
+
+FROM debian:trixie-20260623-slim
+COPY --from=builder /app/target/release/mock-upstream /app/
+EXPOSE 8080
+CMD ["/app/mock-upstream"]

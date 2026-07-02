@@ -1,0 +1,14 @@
+[package]
+name = "pingora-example"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pingora = { version = "=0.8.1", features = ["lb"] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+hyper = { version = "=1.10.1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["blocking"] }

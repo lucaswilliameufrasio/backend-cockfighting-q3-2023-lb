@@ -1,6 +1,6 @@
 FROM rust:1.96.1-slim AS builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y cmake clang libclang-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y g++ cmake && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN cargo build --release --bin pingora-example
 

@@ -6,10 +6,10 @@ Stack: `pingora` (Cloudflare) + `tokio`
 
 ---
 
-## Quick start
+## Quick start com mock upstreams
 
 ```bash
-# Teste com mock upstreams
+# Subir stack de teste (2 mocks + LB)
 docker compose -f docker-compose.test.yml up -d
 
 # LB escuta em :9999, distribui entre api1 (mock) e api2 (mock)
@@ -20,6 +20,10 @@ curl http://localhost:9999/qualquer-coisa
 # Parar
 docker compose -f docker-compose.test.yml down -v
 ```
+
+Os mocks retornam:
+- `/health-check` → `healthy:<porta>`
+- qualquer outro → `upstream:<porta> path:/path`
 
 ## Uso com APIs reais
 
@@ -56,37 +60,46 @@ lb:
 
 ## Benchmark do LB isolado
 
-O repositório tem um benchmark com k6 em `benchmark.js`:
+### Instalar k6
 
 ```bash
-# Instalar k6 (Ubuntu/Debian)
+# Ubuntu/Debian
 sudo apt-get install -y gnupg
 curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6.gpg
 echo "deb [signed-by=/usr/share/keyrings/k6.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update && sudo apt-get install -y k6
 
-# Subir stack de teste
+# macOS
+brew install k6
+```
+
+### Scripts disponíveis
+
+| Script | Objetivo |
+|---|---|
+| `benchmark.js` | Cenário misto com health-check, busca e not-found. Expectativa: P95 < 2s, P99 < 5s, failure < 5% |
+| `benchmarks/http-smoke.js` | Validação rápida de que o LB responde e encaminha corretamente |
+| `benchmarks/round-robin-check.js` | Valida distribuição round-robin entre upstreams mockados |
+
+### Rodar local
+
+```bash
 docker compose -f docker-compose.test.yml up -d
-
-# Rodar benchmark
+k6 run benchmarks/http-smoke.js
+k6 run benchmarks/round-robin-check.js
 k6 run benchmark.js
-
-# O benchmark espera:
-# - P95 < 2s
-# - P99 < 5s
-# - failure rate < 5%
-
-# Parar
 docker compose -f docker-compose.test.yml down -v
 ```
 
 ## Troca de SHA da imagem
 
-Quando houver mudanças no LB, atualizar a SHA nos repositórios consumer:
+Quando houver mudanças no LB:
+
+1. CI faz push da imagem com SHA do commit
+2. Atualizar SHA nos repositórios consumer (Go e Rust):
 
 ```bash
 # No repositório Go ou Rust
-git checkout -b chore/update-lb
 # Editar docker-compose.benchmark.yml
 # Substituir a SHA do LB pela nova
 git add -A && git commit -m "chore: bump LB to <SHA>"
@@ -101,3 +114,4 @@ git push origin HEAD
 | Timeout excessivo | `read_timeout` ou `connection_timeout` baixo demais |
 | Conexões não reusadas | Falta header `Connection: keep-alive` |
 | LB para de responder após stress | Verificar se o PID ainda existe; default sem restart |
+| `Premature close` no Gatling/k6 | LB ou upstream fechando conexão antes do fim. Verificar timeouts e keep-alive. |

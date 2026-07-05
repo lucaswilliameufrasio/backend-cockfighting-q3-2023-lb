@@ -3,13 +3,14 @@
 // Configuração via env vars:
 //   LISTEN (padrão: 0.0.0.0:9999)
 //   UPSTREAMS (padrão: api1:8080,api2:8081)
-//   HEALTH_CHECK_INTERVAL (padrão: 1)
+//   HEALTH_CHECK_INTERVAL (padrão: 5)
 
 use async_trait::async_trait;
 use pingora::lb::selection::RoundRobin;
 use pingora::lb::{health_check::TcpHealthCheck, LoadBalancer};
 use pingora::prelude::*;
 use std::sync::Arc;
+use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Config
@@ -31,7 +32,7 @@ impl Config {
         let health_check_interval = std::env::var("HEALTH_CHECK_INTERVAL")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(1);
+            .unwrap_or(5);
         Config { listen, upstreams, health_check_interval }
     }
 }
@@ -54,8 +55,21 @@ impl ProxyHttp for LB {
         _ctx: &mut Self::CTX,
     ) -> Result<Box<HttpPeer>> {
         let upstream = self.0.select(b"", 256).unwrap();
-        let peer = Box::new(HttpPeer::new(upstream, false, String::new()));
+        let mut peer = Box::new(HttpPeer::new(upstream, false, String::new()));
+        peer.options.connection_timeout = Some(Duration::from_secs(5));
+        peer.options.read_timeout = Some(Duration::from_secs(10));
+        peer.options.idle_timeout = Some(Duration::from_secs(60));
         Ok(peer)
+    }
+
+    async fn upstream_request_filter(
+        &self,
+        _session: &mut Session,
+        upstream_request: &mut RequestHeader,
+        _ctx: &mut Self::CTX,
+    ) -> Result<()> {
+        upstream_request.append_header("Connection", "keep-alive").unwrap();
+        Ok(())
     }
 }
 
@@ -75,7 +89,7 @@ fn main() {
     let hc = TcpHealthCheck::new();
     upstreams.set_health_check(hc);
     upstreams.health_check_frequency =
-        Some(std::time::Duration::from_secs(config.health_check_interval));
+        Some(Duration::from_secs(config.health_check_interval));
 
     let bg = background_service("health check", upstreams);
     let upstreams = bg.task();
